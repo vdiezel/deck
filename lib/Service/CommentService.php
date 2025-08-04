@@ -165,6 +165,22 @@ class CommentService {
 		if ($comment->getActorType() !== 'users' || $comment->getActorId() !== $this->userId) {
 			throw new NoPermissionException('Only authors are allowed to edit their comment.');
 		}
+
+		// to prevent broken reply chains, we reset the parentId of all nodes
+		// pointing to the deleted node to '0'
+		$tree = $this->commentsManager->getTree($commentId);
+		foreach ($tree['replies'] as $entry) {
+			$com = $entry['comment'];
+			if ($com->getParentId() === $commentId) {
+				$com->setParentId('0');
+				try {
+					$this->commentsManager->save($com);
+				} catch (\Exception $e) {
+					$this->logger->warning('Failed to fix the parentId of a child node when deleting parent', ['exception' => $e ]);
+				}
+			}
+		}
+
 		$this->commentsManager->delete($commentId);
 		return new DataResponse([]);
 	}
